@@ -38,8 +38,11 @@ Send that link to the trainer. Same link, same data.
 
 - **Log** — tap a date to open or start a session, add exercises, record sets, reps
   or seconds, and weight.
-- **Exercises** — the exercise database, grouped into categories, with optional
-  target and video link. YouTube links play inline.
+- **Exercises** — the exercise database, grouped into categories by muscle worked.
+  Each entry can carry demo photographs (start and end position), a target, and a
+  link. A YouTube video link plays inline; a YouTube search link shows as
+  "Find a video" and opens in a new tab. Photos that fail to load remove themselves
+  rather than leaving a broken image.
 - **Export** — CSV for spreadsheets, or a full JSON backup. The backup is the only
   file `Restore` accepts.
 

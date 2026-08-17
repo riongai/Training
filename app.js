@@ -128,7 +128,9 @@
           return {
             id: e.id || uid(), name: e.name || "",
             type: e.type === "strength" ? "strength" : "hold",
-            target: e.target || "", url: e.url || "", notes: e.notes || ""
+            target: e.target || "", url: e.url || "", notes: e.notes || "",
+            // Demo photographs, usually start and end position.
+            imgs: Array.isArray(e.imgs) ? e.imgs.filter(function (u) { return typeof u === "string" && u; }) : []
           };
         })
       });
@@ -627,6 +629,20 @@
     }
     return h2 + '<button class="btn danger-text" style="margin-top:.75rem" data-act="rm-cat">Delete category</button>';
   }
+  // A YouTube search link can't be embedded, only opened — label it for what it is.
+  function isSearchLink(url) {
+    return /youtube\.com\/results/.test(url || "");
+  }
+  function shots(e) {
+    var imgs = e.imgs || [];
+    if (!imgs.length) return "";
+    var labels = ["Start", "End"];
+    return '<div class="shots">' + imgs.slice(0, 2).map(function (u, i) {
+      return '<figure><img src="' + esc(u) + '" alt="' + esc(e.name) + ', ' +
+        (labels[i] || "position " + (i + 1)).toLowerCase() + ' position" loading="lazy" decoding="async">' +
+        '<figcaption>' + (labels[i] || i + 1) + '</figcaption></figure>';
+    }).join("") + '</div>';
+  }
   function exerciseCard(e) {
     var vid = ytId(e.url);
     return '<div class="card" style="margin-bottom:.75rem"><div class="entry-head">' +
@@ -635,10 +651,12 @@
       (e.type === "strength" ? "Sets / reps / weight" : "Sets / seconds") +
       (e.target ? " · " + esc(e.target) : "") + '</p>' +
       (e.notes ? '<p class="muted" style="margin:.25rem 0 0">' + esc(e.notes) + '</p>' : "") +
+      shots(e) +
       (e.url ? '<div class="linkrow">' +
         (vid ? '<button data-act="vid" data-v="' + e.id + '">' + icon("play", 13) + " " +
           (S.video === e.id ? "Hide video" : "Watch here") + '</button>' : "") +
-        '<a href="' + esc(e.url) + '" target="_blank" rel="noreferrer">' + icon("external", 13) + ' Open</a></div>' : "") +
+        '<a href="' + esc(e.url) + '" target="_blank" rel="noreferrer">' + icon("external", 13) + ' ' +
+        (isSearchLink(e.url) ? "Find a video" : "Open") + '</a></div>' : "") +
       (vid && S.video === e.id ? '<div class="vid"><iframe src="https://www.youtube.com/embed/' +
         esc(vid) + '" title="' + esc(e.name) + '" allowfullscreen></iframe></div>' : "") +
       '</div><button data-act="edit-ex" data-v="' + e.id + '" aria-label="Edit" style="color:var(--faint)">' +
@@ -652,7 +670,8 @@
       '<button class="' + (e.type === "hold" ? "on" : "") + '" data-act="ed-type" data-v="hold">Sets / seconds</button>' +
       '</div>' +
       '<input class="big" style="margin-top:.5rem" id="ed-target" value="' + esc(e.target) + '" placeholder="Target, e.g. 3 x 10">' +
-      '<input class="big" style="margin-top:.5rem" id="ed-url" value="' + esc(e.url) + '" placeholder="Video link">' +
+      '<input class="big" style="margin-top:.5rem" id="ed-url" value="' + esc(e.url) + '" placeholder="Video or search link">' +
+      '<input class="big" style="margin-top:.5rem" id="ed-imgs" value="' + esc((e.imgs || []).join(", ")) + '" placeholder="Image links, comma separated">' +
       '<input class="big" style="margin-top:.5rem" id="ed-notes" value="' + esc(e.notes) + '" placeholder="Notes">' +
       '<div class="between" style="margin-top:.75rem">' +
       '<button class="btn danger-text" style="width:auto" data-act="del-ex">' + icon("trash", 13) + ' Delete</button>' +
@@ -823,6 +842,8 @@
           e2.target = (document.getElementById("ed-target").value || "").trim();
           e2.url = (document.getElementById("ed-url").value || "").trim();
           e2.notes = (document.getElementById("ed-notes").value || "").trim();
+          e2.imgs = (document.getElementById("ed-imgs").value || "")
+            .split(",").map(function (x) { return x.trim(); }).filter(Boolean);
           markDirty("*categories*"); scheduleSave();
         }
         S.editing = null; render(); return;
@@ -838,7 +859,7 @@
         if (!S.form.name.trim()) return;
         cat.exercises.push({
           id: uid(), name: S.form.name.trim(), type: S.form.type,
-          target: S.form.target.trim(), url: S.form.url.trim(), notes: S.form.notes.trim()
+          target: S.form.target.trim(), url: S.form.url.trim(), notes: S.form.notes.trim(), imgs: []
         });
         markDirty("*categories*"); scheduleSave();
         S.adding = false; S.form = { name: "", type: "strength", target: "", url: "", notes: "" };
@@ -901,6 +922,20 @@
       if (en) { en[f] = el.value; markDirty(S.sel); scheduleSave(); }
     }
   });
+
+  // A demo photo that won't load — CDN hiccup, offline, dead path — removes itself
+  // rather than leaving a broken-image icon on the card. Capture phase, because
+  // img error events don't bubble.
+  document.addEventListener("error", function (ev) {
+    var el = ev.target;
+    if (!el || el.tagName !== "IMG" || !el.closest || !el.closest(".shots")) return;
+    var fig = el.closest("figure");
+    if (fig && fig.parentNode) {
+      var wrap = fig.parentNode;
+      fig.parentNode.removeChild(fig);
+      if (!wrap.children.length && wrap.parentNode) wrap.parentNode.removeChild(wrap);
+    }
+  }, true);
 
   document.addEventListener("change", function (ev) {
     if (ev.target.id !== "file-in") return;
