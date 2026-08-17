@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rio Training — test harness</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="root"></div>
+<script>
+// LOCAL TEST ONLY — fakes the Supabase REST endpoints in memory so the UI and
+// sync logic can be exercised without a real project. Not part of the app.
+window.CONFIG = {
+  SUPABASE_URL: "https://fake.supabase.co",
+  SUPABASE_ANON: "fake-anon-key",
+  ROOM: "test-room",
+  TABLE: "training"
+};
+window.__store = null;
+window.__failNext = 0;
+var realFetch = window.fetch;
+window.fetch = async function (url, opts) {
+  url = String(url);
+  if (url.indexOf("fake.supabase.co") === -1) return realFetch(url, opts);
+  if (window.__failNext > 0) {
+    window.__failNext--;
+    return new Response("simulated outage", { status: 500 });
+  }
+  await new Promise(function (r) { setTimeout(r, 20); });
+  if (!opts || !opts.method || opts.method === "GET") {
+    return new Response(JSON.stringify(window.__store ? [window.__store] : []),
+      { status: 200, headers: { "Content-Type": "application/json" } });
+  }
+  var body = JSON.parse(opts.body)[0];
+  window.__store = { doc: body.doc, updated_at: body.updated_at };
+  return new Response(JSON.stringify([window.__store]),
+    { status: 200, headers: { "Content-Type": "application/json" } });
+};
+</script>
+<script src="app.js"></script>
+</body>
+</html>
