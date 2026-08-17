@@ -136,6 +136,14 @@
     if (!out.categories.length) out.categories = seedData().categories;
     return out;
   }
+  // Sessions are numbered in date order, oldest = 1, worked out fresh each render.
+  // Logging a session you'd missed slots it in and renumbers the ones after it,
+  // so the numbers always read as "nth session of the programme".
+  function sessionNumbers(data) {
+    var map = {};
+    Object.keys(data.sessions || {}).sort().forEach(function (k, i) { map[k] = i + 1; });
+    return map;
+  }
   function findExercise(data, id) {
     for (var i = 0; i < (data.categories || []).length; i++) {
       var c = data.categories[i];
@@ -157,22 +165,23 @@
     return /[",\n\r]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
   }
   function buildCsv(data) {
-    var rows = [["Type","Date","Day","Category","Exercise","Kind","Sets",
+    var nums = sessionNumbers(data);
+    var rows = [["Type","Session no","Date","Day","Category","Exercise","Kind","Sets",
                  "Reps or seconds","Weight (kg)","Target","Video link","Notes","Logged by"]];
     Object.keys(data.sessions || {}).sort().forEach(function (k) {
       var s = data.sessions[k] || {}, p = k.split("-").map(Number);
       var day = new Date(p[0], p[1] - 1, p[2]).toLocaleDateString("en-GB", { weekday: "long" });
-      rows.push(["Session", k, day, "", "", "", "", "", "", "", "", s.notes || "", s.by || ""]);
+      rows.push(["Session", nums[k], k, day, "", "", "", "", "", "", "", "", s.notes || "", s.by || ""]);
       (s.entries || []).forEach(function (en) {
         var f = findExercise(data, en.exerciseId);
-        rows.push(["Logged exercise", k, day, f ? f.cat.name : "",
+        rows.push(["Logged exercise", nums[k], k, day, f ? f.cat.name : "",
           f ? f.ex.name : en.name || "(deleted exercise)", f ? f.ex.type : "",
           en.sets || "", en.reps || "", en.weight || "", "", "", en.notes || "", s.by || ""]);
       });
     });
     (data.categories || []).forEach(function (c) {
       (c.exercises || []).forEach(function (e) {
-        rows.push(["Exercise (database)", "", "", c.name, e.name, e.type,
+        rows.push(["Exercise (database)", "", "", "", c.name, e.name, e.type,
           "", "", "", e.target || "", e.url || "", e.notes || "", ""]);
       });
     });
@@ -481,6 +490,7 @@
 
     if (S.sel && sessions[S.sel]) h += viewSession(sessions[S.sel]);
 
+    var nums = sessionNumbers(S.data);
     h += '<div style="margin-top:1rem"><p class="muted" style="margin:0 0 .5rem">All sessions</p>';
     all.forEach(function (key) {
       var s = sessions[key], n = (s.entries || []).length;
@@ -491,7 +501,8 @@
         return sm ? nm + " " + sm : nm;
       }).join(" · ");
       h += '<button class="list-btn" data-act="day" data-v="' + key + '">' +
-        '<div class="between"><span style="font-size:.875rem;font-weight:500">' + shortDate(key) +
+        '<div class="between"><span style="font-size:.875rem;font-weight:500">' +
+        '<span class="seq">' + nums[key] + '.</span> ' + shortDate(key) +
         '</span><span class="faint">' + (n ? n + " exercise" + (n === 1 ? "" : "s") : "no exercises") +
         '</span></div>' +
         (summary ? '<p class="muted truncate" style="margin:.15rem 0 0">' + esc(summary) + '</p>' : "") +
@@ -504,7 +515,8 @@
   function viewSession(session) {
     var h = '<div class="card" style="margin-top:1rem"><div class="between" style="align-items:flex-start">' +
       '<div><p class="muted" style="margin:0">Session</p>' +
-      '<p style="margin:.1rem 0 0;font-size:.875rem;font-weight:500">' + longDate(S.sel) + '</p>' +
+      '<p style="margin:.1rem 0 0;font-size:.875rem;font-weight:500">' +
+      '<span class="seq">' + sessionNumbers(S.data)[S.sel] + '.</span> ' + longDate(S.sel) + '</p>' +
       (session.by ? '<p class="faint" style="margin:.1rem 0 0">Logged by ' + esc(session.by) + '</p>' : "") +
       '</div><button data-act="close" aria-label="Close" style="color:var(--faint)">' + icon("x") + '</button></div>';
 

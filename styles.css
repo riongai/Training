@@ -125,6 +125,7 @@ header.top h1 { font-size: 1.25rem; font-weight: 500; margin: 0; }
 .day.today { border-color: var(--line-strong); color: var(--text); }
 .day .dot { width: 4px; height: 4px; border-radius: 50%; background: currentColor; opacity: 0.8; }
 .muted { color: var(--muted); font-size: 0.75rem; }
+.seq { color: var(--accent); font-variant-numeric: tabular-nums; }
 .faint { color: var(--faint); font-size: 0.6875rem; }
 
 .entry { border: 1px solid var(--line); border-radius: 0.75rem; padding: 0.75rem; }
