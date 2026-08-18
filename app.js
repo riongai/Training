@@ -22,6 +22,7 @@
   var RETRY_DELAYS = [400, 900, 2000];
   var REFRESH_MS = 15000;
   var FAIL_RETRY_MS = 15000;
+  var APP_VERSION = "v2";
   var CACHE_KEY = "rio-training-cache";
   var WHO_KEY = "rio-training-who";
 
@@ -769,12 +770,18 @@
       banner +
       '<div class="pad">' + body + '</div>' +
       '<p class="fineprint" style="padding:2rem 1rem 0">Everything here is shared — anyone with ' +
-      'this link sees and edits the same data.</p></div>' +
+      'this link sees and edits the same data. <span style="opacity:.7">Build ' + APP_VERSION +
+      ' · photos ' + (photoCount() ? "on" : "none loaded") + '</span></p></div>' +
       '<nav class="tabs"><div class="inner">' +
       tabBtn("log", "Log", "calendar") + tabBtn("exercises", "Exercises", "dumbbell") +
       tabBtn("export", "Export", "database") +
       '</div></nav><div id="status" class="status hidden"></div>';
     setStatus(S.saveState);
+  }
+  function photoCount() {
+    return (S.data.categories || []).reduce(function (a, c) {
+      return a + (c.exercises || []).filter(function (e) { return (e.imgs || []).length; }).length;
+    }, 0);
   }
   function tabBtn(id, label, ic) {
     return '<button class="' + (S.tab === id ? "on" : "") + '" data-act="tab" data-v="' + id + '">' +
