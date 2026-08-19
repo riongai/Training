@@ -22,7 +22,7 @@
   var RETRY_DELAYS = [400, 900, 2000];
   var REFRESH_MS = 15000;
   var FAIL_RETRY_MS = 15000;
-  var APP_VERSION = "v2";
+  var APP_VERSION = "v3";
   var CACHE_KEY = "rio-training-cache";
   var WHO_KEY = "rio-training-who";
 
@@ -247,6 +247,7 @@
     openCat: null, editing: null, video: null,
     addingCat: false, adding: false,
     form: { name: "", type: "strength", target: "", url: "", notes: "" },
+    exQuery: "", addTo: null, addToAll: false, flash: null, confirmRm: false,
     saveState: "idle", error: null, diag: "",
     note: null, staged: null, pasting: false,
     ready: false, offline: false
@@ -264,7 +265,12 @@
   // the dirty set, or edits made while it was in flight would be thrown away.
   var editEpoch = 0;
 
+  var flashTimer = null, exQueryTimer = null;
   function markDirty(k) { dirty.add(k); }
+  function toTop() {
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); }
+    catch (e) { window.scrollTo(0, 0); }
+  }
 
   function mergeDocs(remote, local, dirtyKeys) {
     if (!remote) return local;
@@ -421,6 +427,11 @@
     } catch (e) { /* the write path reports real trouble */ }
   }, REFRESH_MS);
 
+  window.addEventListener("scroll", function () {
+    var b = document.getElementById("totop");
+    if (b) b.className = "totop" + (window.scrollY > 700 ? "" : " hidden");
+  }, { passive: true });
+
   window.addEventListener("pagehide", function () { if (pendingSave) flush(); });
   document.addEventListener("visibilitychange", function () {
     if (document.visibilityState === "hidden" && pendingSave) flush();
@@ -553,8 +564,20 @@
     }
     h += '<input class="big" style="margin-top:.75rem" data-in="snote" ' +
       'value="' + esc(session.notes || "") + '" placeholder="Session note (optional)">' +
-      '<button class="btn danger-text" style="justify-content:flex-start;margin-top:.5rem" ' +
-      'data-act="rm-session">' + icon("trash", 14) + ' Remove this session</button></div>';
+      (S.confirmRm
+        ? '<div class="confirm-rm"><p>Remove session ' + sessionNumbers(S.data)[S.sel] + ', ' +
+          shortDate(S.sel) + '?' +
+          ((session.entries || []).length
+            ? ' Its ' + (session.entries || []).length + ' logged exercise' +
+              ((session.entries || []).length === 1 ? '' : 's') + ' will go with it.'
+            : ' It has nothing logged in it.') +
+          ' Later sessions renumber. This cannot be undone.</p>' +
+          '<div class="row2" style="margin-top:.6rem">' +
+          '<button class="btn" style="background:var(--danger);color:#fff" data-act="rm-session-yes">' +
+          icon("trash", 14) + ' Remove it</button>' +
+          '<button class="btn outline narrow" data-act="rm-session-no">Keep</button></div></div>'
+        : '<button class="btn danger-text" style="justify-content:flex-start;margin-top:.5rem" ' +
+          'data-act="rm-session-ask">' + icon("trash", 14) + ' Remove this session</button>') + '</div>';
     return h;
   }
   function numField(label, id, field, value) {
@@ -581,39 +604,115 @@
     return any ? h : '<p class="faint" style="padding:.5rem 0">Nothing matches. Add it in the Exercises tab first.</p>';
   }
 
-  function viewExercises() {
-    var cats = S.data.categories || [];
-    var cat = cats.filter(function (c) { return c.id === S.openCat; })[0];
-    if (!cat) {
-      var total = cats.reduce(function (a, c) { return a + c.exercises.length; }, 0);
-      var h = '<p class="muted">' + total + ' exercise' + (total === 1 ? "" : "s") +
-        ' across ' + cats.length + ' categor' + (cats.length === 1 ? "y" : "ies") + '</p>';
-      cats.forEach(function (c) {
-        h += '<button class="card" style="width:100%;text-align:left;display:flex;' +
-          'align-items:center;justify-content:space-between;margin-bottom:.75rem" ' +
-          'data-act="open-cat" data-v="' + c.id + '"><span><span style="font-size:.875rem;' +
-          'font-weight:500;display:block">' + esc(c.name) + '</span><span class="muted">' +
-          c.exercises.length + ' exercise' + (c.exercises.length === 1 ? "" : "s") + '</span></span>' +
-          '<span style="color:var(--faint)">' + icon("right", 18) + '</span></button>';
-      });
-      if (S.addingCat) {
-        h += '<div class="card"><input class="big" id="cat-name" placeholder="Mobility">' +
-          '<div class="row2" style="margin-top:.5rem">' +
-          '<button class="btn primary" data-act="save-cat">Add category</button>' +
-          '<button class="btn outline narrow" data-act="cancel-cat">Cancel</button></div></div>';
-      } else {
-        h += '<button class="btn dashed" data-act="new-cat">' + icon("plus") + ' New category</button>';
-      }
-      return h;
+  // Which sessions the "+" picker offers: today first (made on the spot if it
+  // doesn't exist yet), then the most recent, with the rest behind "Show all".
+  var PICKER_RECENT = 6;
+  function sessionPicker(exId) {
+    var nums = sessionNumbers(S.data);
+    var today = toKey(new Date());
+    var keys = Object.keys(S.data.sessions || {}).sort().reverse();
+    var rest = keys.filter(function (k) { return k !== today; });
+    var shown = S.addToAll ? rest : rest.slice(0, PICKER_RECENT);
+    var h = '<div class="picker"><div class="picker-head">' +
+      '<span class="cap" style="margin:0;flex:1">Add to which session?</span>' +
+      '<button data-act="add-cancel" aria-label="Cancel" style="color:var(--faint)">' + icon("x") + '</button>' +
+      '</div><div class="picker-list">';
+    h += '<button class="pick" data-act="add-to" data-v="' + exId + '" data-k="' + today + '">' +
+      '<span style="font-weight:500">Today</span> <span class="faint">' + shortDate(today) + '</span>' +
+      (S.data.sessions[today] ? ' <span class="faint">· session ' + nums[today] + '</span>'
+                              : ' <span class="tagnew">new</span>') + '</button>';
+    shown.forEach(function (k) {
+      h += '<button class="pick" data-act="add-to" data-v="' + exId + '" data-k="' + k + '">' +
+        '<span class="seq">' + nums[k] + '.</span> ' + shortDate(k) + '</button>';
+    });
+    if (!S.addToAll && rest.length > PICKER_RECENT) {
+      h += '<button class="pick" data-act="add-showall" style="text-align:center;color:var(--accent)">' +
+        'Show all ' + rest.length + ' sessions</button>';
     }
-    var h2 = '<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem">' +
-      '<button class="btn-icon" data-act="back-cat" aria-label="Back">' + icon("left") + '</button>' +
-      '<span style="font-size:1rem;font-weight:500">' + esc(cat.name) + '</span></div>';
-    cat.exercises.forEach(function (e) {
-      h2 += S.editing === e.id ? exerciseEditor(e) : exerciseCard(e);
+    return h + '</div></div>';
+  }
+
+  function exSearchBar(inCat) {
+    return '<div class="searchbar">' + icon("search", 15) +
+      '<input id="ex-q" data-in="exq" type="search" value="' + esc(S.exQuery) + '" placeholder="' +
+      (inCat ? "Search in " + esc(inCat.name) : "Search all exercises") + '">' +
+      '<button data-act="ex-clear" aria-label="Clear search" id="ex-clear"' +
+      (S.exQuery ? '' : ' class="hidden"') + '>' + icon("x", 15) + '</button>' +
+      '</div>';
+  }
+
+  // Search from the category list looks across every category; inside a category
+  // it filters that one.
+  function searchResults(term) {
+    var t = term.trim().toLowerCase();
+    var groups = [], total = 0;
+    (S.data.categories || []).forEach(function (c) {
+      var hits = (c.exercises || []).filter(function (e) {
+        return (e.name + " " + (e.notes || "")).toLowerCase().indexOf(t) !== -1;
+      });
+      if (hits.length) { groups.push({ cat: c, hits: hits }); total += hits.length; }
+    });
+    if (!total) return '<p class="muted" style="padding:1rem 0">Nothing matches “' + esc(term) + '”.</p>';
+    var h = '<p class="muted" style="margin:0 0 .75rem">' + total + ' match' + (total === 1 ? "" : "es") + '</p>';
+    var budget = 60, spent = 0;
+    groups.forEach(function (g) {
+      if (spent >= budget) return;
+      h += '<p class="cap">' + esc(g.cat.name) + '</p>';
+      g.hits.slice(0, budget - spent).forEach(function (e) { h += exerciseCard(e, g.cat.id); });
+      spent += g.hits.length;
+    });
+    if (total > budget) {
+      h += '<p class="muted" style="padding:.5rem 0">Showing the first ' + budget +
+        '. Keep typing to narrow it down.</p>';
+    }
+    return h;
+  }
+
+  function categoryListHtml() {
+    var cats = S.data.categories || [];
+    var total = cats.reduce(function (a, c) { return a + c.exercises.length; }, 0);
+    var h = '<p class="muted">' + total + ' exercise' + (total === 1 ? "" : "s") +
+      ' across ' + cats.length + ' categor' + (cats.length === 1 ? "y" : "ies") + '</p>';
+    cats.forEach(function (c) {
+      h += '<button class="card" style="width:100%;text-align:left;display:flex;' +
+        'align-items:center;justify-content:space-between;margin-bottom:.75rem" ' +
+        'data-act="open-cat" data-v="' + c.id + '"><span><span style="font-size:.875rem;' +
+        'font-weight:500;display:block">' + esc(c.name) + '</span><span class="muted">' +
+        c.exercises.length + ' exercise' + (c.exercises.length === 1 ? "" : "s") + '</span></span>' +
+        '<span style="color:var(--faint)">' + icon("right", 18) + '</span></button>';
+    });
+    if (S.addingCat) {
+      h += '<div class="card"><input class="big" id="cat-name" placeholder="Mobility">' +
+        '<div class="row2" style="margin-top:.5rem">' +
+        '<button class="btn primary" data-act="save-cat">Add category</button>' +
+        '<button class="btn outline narrow" data-act="cancel-cat">Cancel</button></div></div>';
+    } else {
+      h += '<button class="btn dashed" data-act="new-cat">' + icon("plus") + ' New category</button>';
+    }
+    return h;
+  }
+
+  function inCategoryResults(cat) {
+    var term = S.exQuery.trim().toLowerCase();
+    var listed = term
+      ? cat.exercises.filter(function (e) {
+          return (e.name + " " + (e.notes || "")).toLowerCase().indexOf(term) !== -1;
+        })
+      : cat.exercises;
+    var h = '<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.75rem">' +
+      '<button class="btn-icon" data-act="back-cat" aria-label="Back to categories">' + icon("left") + '</button>' +
+      '<span style="font-size:1rem;font-weight:500">' + esc(cat.name) + '</span>' +
+      '<span class="muted" style="margin-left:auto">' + listed.length +
+      (term ? ' of ' + cat.exercises.length : '') + '</span></div>';
+    if (term && !listed.length) {
+      h += '<p class="muted" style="padding:1rem 0">Nothing in ' + esc(cat.name) +
+        ' matches \u201C' + esc(S.exQuery) + '\u201D.</p>';
+    }
+    listed.forEach(function (e) {
+      h += S.editing === e.id ? exerciseEditor(e) : exerciseCard(e, cat.id);
     });
     if (S.adding) {
-      h2 += '<div class="card"><input class="big" id="nx-name" placeholder="Exercise name" ' +
+      h += '<div class="card"><input class="big" id="nx-name" placeholder="Exercise name" ' +
         'value="' + esc(S.form.name) + '">' +
         '<div class="seg" style="margin-top:.5rem">' +
         '<button class="' + (S.form.type === "strength" ? "on" : "") + '" data-act="nx-type" data-v="strength">Sets / reps / weight</button>' +
@@ -626,10 +725,20 @@
         '<button class="btn primary" data-act="save-ex">Add exercise</button>' +
         '<button class="btn outline narrow" data-act="cancel-ex">Cancel</button></div></div>';
     } else {
-      h2 += '<button class="btn dashed" data-act="new-ex">' + icon("plus") + ' Add exercise</button>';
+      h += '<button class="btn dashed" data-act="new-ex">' + icon("plus") + ' Add exercise</button>';
     }
-    return h2 + '<button class="btn danger-text" style="margin-top:.75rem" data-act="rm-cat">Delete category</button>';
+    return h + '<button class="btn danger-text" style="margin-top:.75rem" data-act="rm-cat">Delete category</button>';
   }
+
+  function viewExercises() {
+    var cats = S.data.categories || [];
+    var cat = cats.filter(function (c) { return c.id === S.openCat; })[0];
+    var flash = S.flash ? '<p class="flash">' + esc(S.flash) + '</p>' : "";
+    var body = cat ? inCategoryResults(cat)
+                   : (S.exQuery.trim() ? searchResults(S.exQuery) : categoryListHtml());
+    return exSearchBar(cat) + flash + '<div id="ex-results">' + body + '</div>';
+  }
+
   // A YouTube search link can't be embedded, only opened — label it for what it is.
   function isSearchLink(url) {
     return /youtube\.com\/results/.test(url || "");
@@ -644,7 +753,7 @@
         '<figcaption>' + (labels[i] || i + 1) + '</figcaption></figure>';
     }).join("") + '</div>';
   }
-  function exerciseCard(e) {
+  function exerciseCard(e, catId) {
     var vid = ytId(e.url);
     return '<div class="card" style="margin-bottom:.75rem"><div class="entry-head">' +
       '<div style="min-width:0"><p style="margin:0;font-size:.875rem;font-weight:500">' + esc(e.name) + '</p>' +
@@ -660,8 +769,12 @@
         (isSearchLink(e.url) ? "Find a video" : "Open") + '</a></div>' : "") +
       (vid && S.video === e.id ? '<div class="vid"><iframe src="https://www.youtube.com/embed/' +
         esc(vid) + '" title="' + esc(e.name) + '" allowfullscreen></iframe></div>' : "") +
-      '</div><button data-act="edit-ex" data-v="' + e.id + '" aria-label="Edit" style="color:var(--faint)">' +
-      icon("pencil", 15) + '</button></div></div>';
+      '</div><span class="cardtools">' +
+      '<button data-act="add-open" data-v="' + e.id + '" aria-label="Add to a session" class="addbtn">' +
+      icon("plus", 16) + '</button>' +
+      '<button data-act="edit-ex" data-v="' + e.id + '" data-c="' + (catId || "") +
+      '" aria-label="Edit" style="color:var(--faint)">' + icon("pencil", 15) + '</button>' +
+      '</span></div>' + (S.addTo === e.id ? sessionPicker(e.id) : "") + '</div>';
   }
   function exerciseEditor(e) {
     return '<div class="card" style="margin-bottom:.75rem">' +
@@ -775,7 +888,10 @@
       '<nav class="tabs"><div class="inner">' +
       tabBtn("log", "Log", "calendar") + tabBtn("exercises", "Exercises", "dumbbell") +
       tabBtn("export", "Export", "database") +
-      '</div></nav><div id="status" class="status hidden"></div>';
+      '</div></nav><div id="status" class="status hidden"></div>' +
+      '<button id="totop" class="totop' + (window.scrollY > 700 ? '' : ' hidden') +
+      '" data-act="to-top" aria-label="Back to top">' +
+      icon("left", 18) + '</button>';
     setStatus(S.saveState);
   }
   function photoCount() {
@@ -799,7 +915,10 @@
     switch (act) {
       case "who": S.who = v; lsSet(WHO_KEY, v); render(); return;
       case "swap-who": S.who = S.who === "Rio" ? "Trainer" : "Rio"; lsSet(WHO_KEY, S.who); render(); return;
-      case "tab": S.tab = v; S.note = null; render(); return;
+      case "tab":
+        S.tab = v; S.note = null; S.addTo = null; S.confirmRm = false;
+        render(); toTop(); return;
+      case "to-top": toTop(); return;
       case "go-export": S.tab = "export"; render(); return;
       case "retry": clearTimeout(timer); if (pendingSave) flush(); else retryLoad(); return;
       case "today": S.year = new Date().getFullYear(); S.month = new Date().getMonth(); render(); return;
@@ -808,8 +927,8 @@
         if (S.month < 0) { S.month = 11; S.year--; }
         if (S.month > 11) { S.month = 0; S.year++; }
         render(); return;
-      case "day": S.sel = v; S.picking = false; ensureSession(v); render(); return;
-      case "close": S.sel = null; render(); return;
+      case "day": S.sel = v; S.picking = false; S.confirmRm = false; ensureSession(v); render(); return;
+      case "close": S.sel = null; S.confirmRm = false; render(); return;
       case "pick": S.picking = true; render(); document.getElementById("pick-q").focus(); return;
       case "pick-cancel": S.picking = false; render(); return;
       case "add-ex":
@@ -818,11 +937,42 @@
       case "rm-entry":
         S.data.sessions[S.sel].entries = S.data.sessions[S.sel].entries.filter(function (x) { return x.id !== v; });
         markDirty(S.sel); scheduleSave(); render(); return;
-      case "rm-session":
+      case "rm-session-ask": S.confirmRm = true; render(); return;
+      case "rm-session-no": S.confirmRm = false; render(); return;
+      case "rm-session-yes":
         delete S.data.sessions[S.sel];
-        markDirty(S.sel); scheduleSave(); S.sel = null; render(); return;
-      case "open-cat": S.openCat = v; render(); return;
-      case "back-cat": S.openCat = null; S.editing = null; S.video = null; render(); return;
+        markDirty(S.sel); scheduleSave();
+        S.sel = null; S.confirmRm = false; render(); return;
+      case "add-open": S.addTo = v; S.addToAll = false; render(); return;
+      case "add-cancel": S.addTo = null; S.addToAll = false; render(); return;
+      case "add-showall": S.addToAll = true; render(); return;
+      case "add-to": {
+        var key = t.getAttribute("data-k");
+        if (!S.data.sessions[key]) {
+          S.data.sessions[key] = { notes: "", by: S.who, entries: [] };
+        }
+        S.data.sessions[key].entries.push({
+          id: uid(), exerciseId: v, sets: "", reps: "", weight: "", notes: ""
+        });
+        markDirty(key); scheduleSave();
+        var found = findExercise(S.data, v);
+        S.flash = "Added " + (found ? found.ex.name : "exercise") + " to session " +
+          sessionNumbers(S.data)[key] + " · " + shortDate(key);
+        S.addTo = null; S.addToAll = false;
+        clearTimeout(flashTimer);
+        flashTimer = setTimeout(function () { S.flash = null; render(); }, 5000);
+        render(); return;
+      }
+      case "ex-clear":
+        S.exQuery = ""; render();
+        var box = document.getElementById("ex-q"); if (box) box.focus();
+        return;
+      case "open-cat":
+        S.openCat = v; S.exQuery = ""; S.addTo = null; S.editing = null;
+        render(); toTop(); return;
+      case "back-cat":
+        S.openCat = null; S.editing = null; S.video = null; S.exQuery = ""; S.addTo = null;
+        render(); toTop(); return;
       case "new-cat": S.addingCat = true; render(); return;
       case "cancel-cat": S.addingCat = false; render(); return;
       case "save-cat": {
@@ -835,7 +985,11 @@
         S.data.categories = cats.filter(function (c) { return c.id !== S.openCat; });
         markDirty("*categories*"); scheduleSave(); S.openCat = null; render(); return;
       case "vid": S.video = S.video === v ? null : v; render(); return;
-      case "edit-ex": S.editing = v; render(); return;
+      case "edit-ex": {
+        var owner = t.getAttribute("data-c");
+        if (owner && owner !== S.openCat) S.openCat = owner;
+        S.editing = v; render(); return;
+      }
       case "cancel-edit": S.editing = null; render(); return;
       case "ed-type": {
         var e1 = cat.exercises.filter(function (x) { return x.id === S.editing; })[0];
@@ -912,6 +1066,23 @@
     if (!kind) return;
     if (kind === "pickq") {
       document.getElementById("pick-list").innerHTML = pickList(el.value);
+      return;
+    }
+    if (kind === "exq") {
+      S.exQuery = el.value;
+      clearTimeout(exQueryTimer);
+      exQueryTimer = setTimeout(function () {
+        var box = document.getElementById("ex-results");
+        if (!box) return;
+        var cats = S.data.categories || [];
+        var cat = cats.filter(function (c) { return c.id === S.openCat; })[0];
+        // Re-render the results only. Rebuilding the whole tab would take the
+        // keyboard focus off the search field mid-word.
+        box.innerHTML = cat ? inCategoryResults(cat)
+                            : (S.exQuery.trim() ? searchResults(S.exQuery) : categoryListHtml());
+        var clear = document.getElementById("ex-clear");
+        if (clear) clear.className = S.exQuery ? "" : "hidden";
+      }, 140);
       return;
     }
     if (kind === "snote") {

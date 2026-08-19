@@ -37,8 +37,12 @@ Send that link to the trainer. Same link, same data.
 ## Day to day
 
 - **Log** — tap a date to open or start a session, add exercises, record sets, reps
-  or seconds, and weight.
+  or seconds, and weight. Removing a session asks first, and says what goes with it.
 - **Exercises** — the exercise database, grouped into categories by muscle worked.
+  The search bar looks across every category from the category list, and filters a
+  single category once you're inside one. Each exercise has a "+" that adds it
+  straight to a session — today by default, or any earlier date.
+  Long lists have a back-to-top button.
   Each entry can carry demo photographs (start and end position), a target, and a
   link. A YouTube video link plays inline; a YouTube search link shows as
   "Find a video" and opens in a new tab. Photos that fail to load remove themselves

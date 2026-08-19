@@ -254,3 +254,58 @@ nav.tabs button.on { color: var(--accent); }
 .setup ol { padding-left: 1.1rem; }
 .setup li { margin-bottom: 0.5rem; }
 svg { flex: 0 0 auto; }
+
+/* --- search bar in the Exercises tab --- */
+.searchbar {
+  display: flex; align-items: center; gap: 0.5rem;
+  background: var(--card); border: 1px solid var(--line-strong);
+  border-radius: 0.75rem; padding: 0 0.625rem; margin-bottom: 0.75rem;
+  color: var(--faint);
+}
+.searchbar input {
+  flex: 1; min-width: 0; border: 0; background: none; padding: 0.625rem 0;
+  font-size: 0.9375rem; -webkit-appearance: none; appearance: none;
+}
+.searchbar input:focus { outline: none; }
+.searchbar:focus-within { border-color: var(--accent); }
+.searchbar input::-webkit-search-cancel-button { display: none; }
+.searchbar button { color: var(--faint); display: flex; padding: 0.25rem; }
+
+/* --- "+" and edit, side by side on an exercise card --- */
+.cardtools { display: flex; align-items: center; gap: 0.125rem; flex-shrink: 0; }
+.addbtn {
+  width: 1.9rem; height: 1.9rem; border-radius: 0.5rem;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--accent); border: 1px solid var(--accent);
+}
+.addbtn:active { background: var(--accent); color: var(--accent-text); }
+.tagnew {
+  font-size: 0.5625rem; text-transform: uppercase; letter-spacing: 0.06em;
+  background: var(--accent); color: var(--accent-text);
+  padding: 0.1rem 0.3rem; border-radius: 0.25rem; margin-left: 0.25rem;
+}
+
+/* --- confirmation before a session is removed --- */
+.confirm-rm {
+  margin-top: 0.75rem; border: 1px solid var(--danger);
+  background: var(--danger-bg); border-radius: 0.75rem; padding: 0.75rem;
+}
+.confirm-rm p { margin: 0; font-size: 0.75rem; line-height: 1.5; color: var(--danger); }
+
+/* --- confirmation that an exercise was added --- */
+.flash {
+  margin: 0 0 0.75rem; font-size: 0.8125rem; line-height: 1.4;
+  background: var(--accent); color: var(--accent-text);
+  border-radius: 0.625rem; padding: 0.5rem 0.75rem;
+}
+
+/* --- back to top --- */
+.totop {
+  position: fixed; right: 0.9rem; bottom: 4.75rem; z-index: 5;
+  width: 2.6rem; height: 2.6rem; border-radius: 50%;
+  background: var(--card); border: 1px solid var(--line-strong); color: var(--text);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,.18);
+  transform: rotate(90deg);
+}
+.totop.hidden { display: none !important; }
